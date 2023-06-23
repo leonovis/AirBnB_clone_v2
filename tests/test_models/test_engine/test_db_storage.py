@@ -1,85 +1,116 @@
 #!/usr/bin/python3
-"""test for file storage"""
-import unittest
-import pep8
-import json
-import os
-from os import getenv
+""" Module for testing file storage"""
 import MySQLdb
-from models.base_model import BaseModel, Base
+import os
+import unittest
+from datetime import datetime
+
+from models import storage
 from models.user import User
-from models.state import State
-from models.city import City
-from models.amenity import Amenity
-from models.place import Place
-from models.review import Review
-from models.engine.db_storage import DBStorage
 
 
-@unittest.skipIf(getenv("HBNB_TYPE_STORAGE") != 'db', 'NO DB')
+@unittest.skipIf(
+    os.getenv('HBNB_TYPE_STORAGE') != 'db', 'DBStorage test')
 class TestDBStorage(unittest.TestCase):
-    '''this will test the DBStorage'''
+    """ Class to test the database storage method """
 
-    @classmethod
-    def setUpClass(self):
-        """set up for test"""
-        self.User = getenv("HBNB_MYSQL_USER")
-        self.Passwd = getenv("HBNB_MYSQL_PWD")
-        self.Db = getenv("HBNB_MYSQL_DB")
-        self.Host = getenv("HBNB_MYSQL_HOST")
-        self.db = MySQLdb.connect(host=self.Host, user=self.User,
-                                  passwd=self.Passwd, db=self.Db,
-                                  charset="utf8")
-        self.query = self.db.cursor()
-        self.storage = DBStorage()
-        self.storage.reload()
+    def test_new(self):
+        """ New object is correctly added to database """
+        new = User(
+            email='john2020@gmail.com',
+            password='password',
+            first_name='John',
+            last_name='Zoldyck'
+        )
+        self.assertFalse(new in storage.all().values())
+        new.save()
+        self.assertTrue(new in storage.all().values())
+        dbc = MySQLdb.connect(
+            host=os.getenv('HBNB_MYSQL_HOST'),
+            port=3306,
+            user=os.getenv('HBNB_MYSQL_USER'),
+            passwd=os.getenv('HBNB_MYSQL_PWD'),
+            db=os.getenv('HBNB_MYSQL_DB')
+        )
+        cursor = dbc.cursor()
+        cursor.execute('SELECT * FROM users WHERE id="{}"'.format(new.id))
+        result = cursor.fetchone()
+        self.assertTrue(result is not None)
+        self.assertIn('john2020@gmail.com', result)
+        self.assertIn('password', result)
+        self.assertIn('John', result)
+        self.assertIn('Zoldyck', result)
+        cursor.close()
+        dbc.close()
 
-    @classmethod
-    def teardown(self):
-        """at the end of the test this will tear it down"""
-        self.query.close()
-        self.db.close()
+    def test_delete(self):
+        """ Object is correctly deleted from database """
+        new = User(
+            email='john2020@gmail.com',
+            password='password',
+            first_name='John',
+            last_name='Zoldyck'
+        )
+        obj_key = 'User.{}'.format(new.id)
+        dbc = MySQLdb.connect(
+            host=os.getenv('HBNB_MYSQL_HOST'),
+            port=3306,
+            user=os.getenv('HBNB_MYSQL_USER'),
+            passwd=os.getenv('HBNB_MYSQL_PWD'),
+            db=os.getenv('HBNB_MYSQL_DB')
+        )
+        new.save()
+        self.assertTrue(new in storage.all().values())
+        cursor = dbc.cursor()
+        cursor.execute('SELECT * FROM users WHERE id="{}"'.format(new.id))
+        result = cursor.fetchone()
+        self.assertTrue(result is not None)
+        self.assertIn('john2020@gmail.com', result)
+        self.assertIn('password', result)
+        self.assertIn('John', result)
+        self.assertIn('Zoldyck', result)
+        self.assertIn(obj_key, storage.all(User).keys())
+        new.delete()
+        self.assertNotIn(obj_key, storage.all(User).keys())
+        cursor.close()
+        dbc.close()
 
-    @unittest.skipIf(getenv("HBNB_TYPE_STORAGE") != 'db', 'NO DB')
-    def test_pep8_DBStorage(self):
-        """Test Pep8"""
-        style = pep8.StyleGuide(quiet=True)
-        p = style.check_files(['models/engine/db_storage.py'])
-        self.assertEqual(p.total_errors, 0, "fix pep8")
+    def test_reload(self):
+        """ Tests the reloading of the database session """
+        dbc = MySQLdb.connect(
+            host=os.getenv('HBNB_MYSQL_HOST'),
+            port=3306,
+            user=os.getenv('HBNB_MYSQL_USER'),
+            passwd=os.getenv('HBNB_MYSQL_PWD'),
+            db=os.getenv('HBNB_MYSQL_DB')
+        )
+        cursor = dbc.cursor()
+        cursor.execute(
+            'INSERT INTO users(id, created_at, updated_at, email, password' +
+            ', first_name, last_name) VALUES(%s, %s, %s, %s, %s, %s, %s);',
+            [
+                '4447-by-me',
+                str(datetime.now()),
+                str(datetime.now()),
+                'ben_pike@yahoo.com',
+                'pass',
+                'Benjamin',
+                'Pike',
+            ]
+        )
+        self.assertNotIn('User.4447-by-me', storage.all())
+        dbc.commit()
+        storage.reload()
+        self.assertIn('User.4447-by-me', storage.all())
+        cursor.close()
+        dbc.close()
 
-    @unittest.skipIf(getenv("HBNB_TYPE_STORAGE") != 'db', 'NO DB')
-    def test_read_tables(self):
-        """existing tables"""
-        self.query.execute("SHOW TABLES")
-        salida = self.query.fetchall()
-        self.assertEqual(len(salida), 7)
-
-    @unittest.skipIf(getenv("HBNB_TYPE_STORAGE") != 'db', 'NO DB')
-    def test_no_element_user(self):
-        """no elem in users"""
-        self.query.execute("SELECT * FROM users")
-        salida = self.query.fetchall()
-        self.assertEqual(len(salida), 0)
-
-    @unittest.skipIf(getenv("HBNB_TYPE_STORAGE") != 'db', 'NO DB')
-    def test_no_element_cities(self):
-        """no elem in cities"""
-        self.query.execute("SELECT * FROM cities")
-        salida = self.query.fetchall()
-        self.assertEqual(len(salida), 0)
-
-    @unittest.skipIf(getenv("HBNB_TYPE_STORAGE") != 'db', 'NO DB')
-    def test_add(self):
-        """Test same size between storage() and existing db"""
-        self.query.execute("SELECT * FROM states")
-        salida = self.query.fetchall()
-        self.assertEqual(len(salida), 0)
-        state = State(name="LUISILLO")
-        state.save()
-        self.db.autocommit(True)
-        self.query.execute("SELECT * FROM states")
-        salida = self.query.fetchall()
-        self.assertEqual(len(salida), 1)
-
-if __name__ == "__main__":
-    unittest.main()
+    def test_save(self):
+        """ object is successfully saved to database """
+        new = User(
+            email='john2020@gmail.com',
+            password='password',
+            first_name='John',
+            last_name='Zoldyck'
+        )
+        dbc = MySQLdb.connect(

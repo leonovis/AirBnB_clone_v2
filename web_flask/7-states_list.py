@@ -1,27 +1,33 @@
 #!/usr/bin/python3
-""" Script that runs an app with Flask framework """
+'''A simple Flask web application.
+'''
 from flask import Flask, render_template
+
 from models import storage
 from models.state import State
 
 
 app = Flask(__name__)
+'''The Flask application instance.'''
+app.url_map.strict_slashes = False
+
+
+@app.route('/states_list')
+def states_list():
+    '''The states_list page.'''
+    all_states = list(storage.all(State).values())
+    all_states.sort(key=lambda x: x.name)
+    ctxt = {
+        'states': all_states
+    }
+    return render_template('7-states_list.html', **ctxt)
 
 
 @app.teardown_appcontext
-def teardown_session(exception):
-    """ Teardown """
+def flask_teardown(exc):
+    '''The Flask app/request context end event listener.'''
     storage.close()
 
 
-@app.route('/states_list', strict_slashes=False)
-def display_html():
-    """ Function called with /states_list route """
-    states = storage.all(State)
-    dict_to_html = {value.id: value.name for value in states.values()}
-    return render_template('7-states_list.html',
-                           Table="States",
-                           items=dict_to_html)
-
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port='5000')
